@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pth
+GDSC_data/Cell_line_RMA_proc_basalExp.txt
+Model_80/
+smile_inchi.csv
+*.bak
