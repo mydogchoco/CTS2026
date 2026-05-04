@@ -90,7 +90,7 @@ class transformer(nn.Sequential):
 
 class MLP(nn.Sequential):
     def __init__(self):
-        input_dim_gene = 17737
+        input_dim_gene = 3000
         hidden_dim_gene = 256
         mlp_hidden_dims_gene = [1024, 256, 64]
         super(MLP, self).__init__()
@@ -308,30 +308,41 @@ class DeepTTC:
 
 
 if __name__ == '__main__':
-
-    # step1 数据切分
+    import json
     from Step2_DataEncoding import DataEncoding
+
     vocab_dir = '/home/intern3_2026_1/DeepTTC'
     obj = DataEncoding(vocab_dir=vocab_dir)
 
-    # 切分完成
-    traindata, testdata = obj.Getdata.ByCancer(random_seed=1)
-    # encoding 完成
+    # data prep
+    traindata, testdata = obj.Getdata.ByRandom(random_seed=1)
     traindata, train_rnadata, testdata, test_rnadata = obj.encode(
         traindata=traindata,
         testdata=testdata)
 
-    # step2：构造模型
-    modeldir = '/home/intern3_2026_1/DeepTTC/Model_80'
-    modelfile = modeldir + '/model.pt'
+    # build & train
+    modeldir = '/home/intern1_2026_1/Common/CTS2026/DeepTTA/Model_unif'
     if not os.path.exists(modeldir):
         os.mkdir(modeldir)
 
     net = DeepTTC(modeldir=modeldir)
     net.train(train_drug=traindata, train_rna=train_rnadata,
-              val_drug=testdata, val_rna=test_rnadata)
+              val_drug=testdata,    val_rna=test_rnadata)
     net.save_model()
-    print("Model Saveed :{}".format(modelfile))
+    print("Model saved: {}/model.pt".format(modeldir))
 
+# ── 결과 출력 ──
+y_label, y_pred, mse, rmse, pearson, p_val, spearman, s_p_val, CI = \
+    net.predict(testdata, test_rnadata)
 
+OUTPUT_DIR = '/home/intern1_2026_1/Common/Output'
+out_path = OUTPUT_DIR + '/DeepTTA_with_gexp_GDSC.csv'
 
+with open(out_path, 'w') as f:
+    f.write(f"Pearson = {pearson}\n")
+    f.write(f"Spearman = {spearman}\n")
+    f.write(f"RMSE = {rmse}\n")
+    f.write(f"MSE = {mse}\n")
+
+print(f"Results saved to: {out_path}")
+print(f"Pearson={pearson:.4f}, Spearman={spearman:.4f}, RMSE={rmse:.4f}, MSE={mse:.4f}")

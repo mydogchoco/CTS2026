@@ -299,12 +299,26 @@ class data_process_loader(data.Dataset):
             self.mrna = self.mrna.T
         else:
             if self.config['external_dataset'] == 'None':
-                self.rna_data = pd.read_csv('./data/GDSC/data_processed/RNA_n18451_1018_zscore.csv',index_col=0)
-                self.rna_data.columns = [name.split('.')[0][1:] for name in self.rna_data.columns.values]
-                self.rna_data = self.rna_data.T
-                self.genetic = pd.read_csv('./data/GDSC/data_processed/Genetic_features_n969_735.txt',sep='\t',index_col=0)
-                self.mrna = pd.read_csv('./data/GDSC/data_processed/mrna_n20617_1028_zscore.csv',index_col=0)
-                self.mrna = self.mrna.T
+                # Unified expression
+                DATA_DIR = "/home/intern1_2026_1/Common/Input"
+                self.rna_data = pd.read_csv(f'{DATA_DIR}/exp.csv', index_col=0)
+                self.rna_data = self.rna_data[self.rna_data.index.str.match(r"^DATA\.[0-9]+$")]
+                self.rna_data.index = self.rna_data.index.str.replace("DATA.", "", regex=False).astype(int)
+    
+                # mutation: COSMIC_ID indexed (그대로 OK)
+                self.genetic = pd.read_csv('./data/GDSC/data_processed/Genetic_features_n969_735.txt', sep='\t', index_col=0)
+    
+                # methylation: cell_name indexed → COSMIC_ID로 reindex
+                self.mrna = pd.read_csv('./data/GDSC/data_processed/mrna_n20617_1028_zscore.csv', index_col=0)
+                self.mrna = self.mrna.T  # cell × gene
+    
+                # cell_name → COSMIC_ID 매핑 (원본 CDR에서 추출)
+                cdr_orig = pd.read_csv('./data/GDSC/data_processed/CDR_n156813.txt',
+                           sep='\t', usecols=['COSMIC_ID', 'cell_type'])
+                name2cosmic = dict(zip(cdr_orig['cell_type'], cdr_orig['COSMIC_ID'].astype(int)))
+                self.mrna.index = self.mrna.index.map(name2cosmic)
+                self.mrna = self.mrna[~self.mrna.index.isna()]   # 매핑 안 된 행 drop
+                self.mrna.index = self.mrna.index.astype(int)
             if self.config['external_dataset'] == 'TCGA':
                 self.rna_data = pd.read_csv('./data/TCGA/omics_TCGA/processed_matrix/EG_tcga_scale.csv',index_col=0)
                 # self.rna_data.columns = [name.split('.')[0][1:] for name in self.rna_data.columns.values]
@@ -345,9 +359,10 @@ class data_process_loader(data.Dataset):
             v_mrna = np.array(self.mrna.loc[self.drug_df.iloc[index]['patient.arr'],:])
         else:
             if self.config['external_dataset'] == 'None':
-                v_rna = np.array(self.rna_data.loc[self.drug_df.iloc[index]['assay_name'],:])
-                v_genetic = np.array(self.genetic.loc[int(self.drug_df.iloc[index]['COSMIC_ID']),:])
-                v_mrna = np.array(self.mrna.loc[self.drug_df.iloc[index]['cell_type'],:])
+                cid = int(self.drug_df.iloc[index]['COSMIC_ID'])
+                v_rna     = np.array(self.rna_data.loc[cid, :])
+                v_genetic = np.array(self.genetic.loc[cid, :])
+                v_mrna    = np.array(self.mrna.loc[cid, :])
             if self.config['external_dataset'] == 'TCGA':
                 v_rna = np.array(self.rna_data.loc[self.drug_df.iloc[index]['patient.arr'],:])
                 v_genetic = np.array(self.genetic.loc[self.drug_df.iloc[index]['patient.arr'],:])

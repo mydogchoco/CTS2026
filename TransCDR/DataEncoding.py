@@ -47,7 +47,8 @@ class DataEncoding:
 
     def encode(self,traindata,testdata,valdata,**config):
         # prepare data
-        drug_smiles = pd.read_csv('./data/GDSC/data_processed/CDR_n174725.txt',sep='\t')
+        DATA_DIR = "/home/intern1_2026_1/Common/Input"
+        drug_smiles = pd.read_csv(f'{DATA_DIR}/drug2smi.csv')  # cols: DRUG_NAME, smiles
         smile_encode = pd.Series(drug_smiles['smiles'].unique()).apply(self._drug2emb_encoder)
         uniq_smile_dict = dict(zip(drug_smiles['smiles'].unique(),smile_encode))
         if (testdata is not None) & (valdata is not None):

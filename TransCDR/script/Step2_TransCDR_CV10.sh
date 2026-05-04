@@ -2,11 +2,11 @@ cd ./TransCDR
 python Step2_train_model.py \
 --model_type 'regression' \
 --data_path './data/GDSC/CV10' \
---omics 'expr + mutation + methylation' \
+--omics 'expr' \
 --input_dim_drug 2092 \
 --lr 1e-5 \
 --BATCH_SIZE 64 \
---train_epoch 100 \
+--train_epoch 50 \
 --pre_train 'True' \
 --screening 'None' \
 --fusion_type 'encoder' \

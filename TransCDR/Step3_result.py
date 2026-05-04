@@ -34,4 +34,18 @@ res = result.describe()
 res.to_csv(args.CV10_result_path+'/res_mean.csv')
 result.to_csv(args.CV10_result_path+ '/res.csv')
 
+# ── 결과 출력  ──
+mean_row = res.loc['mean']
 
+OUTPUT_DIR = '/home/intern1_2026_1/Common/Output'
+out_path = OUTPUT_DIR + '/TransCDR_with_gexp_GDSC.csv'
+
+with open(out_path, 'w') as f:
+    f.write(f"Pearson = {float(mean_row['Pearson'])}\n")
+    f.write(f"Spearman = {float(mean_row['Spearman'])}\n")
+    f.write(f"RMSE = {float(mean_row['RMSE'])}\n")
+    f.write(f"MSE = {float(mean_row['MSE'])}\n")
+
+print(f"Results saved to: {out_path}")
+print(f"Pearson={float(mean_row['Pearson']):.4f}, Spearman={float(mean_row['Spearman']):.4f}, "
+      f"RMSE={float(mean_row['RMSE']):.4f}, MSE={float(mean_row['MSE']):.4f}")

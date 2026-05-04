@@ -42,7 +42,7 @@ for i in range(1,11):
         'model_type': args.model_type, # classification, regression
         'omics': args.omics, # expr + mutation + methylation
         'input_dim_drug': args.input_dim_drug,  # graph:300, seq:768, sequence + graph:1068
-        'input_dim_rna':18451,
+        'input_dim_rna':3000,
         'input_dim_genetic':735,
         'input_dim_mrna':20617,
         'KG':'', # no knowledge graph

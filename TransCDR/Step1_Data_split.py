@@ -15,9 +15,31 @@ parser.add_argument('--n_clusters', type=int, required=True, help='the number of
 parser.add_argument('--n_sampling', type=int, required=True, help='the number of sampling ratio (neg/pos): 1, 2, 5')
 parser.add_argument('--result_folder', type=str, required=True, help='The save path of CV10 data')
 args = parser.parse_args()
+
+DATA_DIR = "/home/intern1_2026_1/Common/Input"
+
 if args.model_type == 'regression':
-    CDR = pd.read_csv('./data/GDSC/data_processed/CDR_n156813.txt',sep='\t',index_col=0)
-    CDR = shuffle(CDR,random_state=2022) 
+    # 통일 response 로드
+    CDR = pd.read_csv(f'{DATA_DIR}/response.csv')
+    CDR = CDR[['COSMIC_ID', 'DRUG_ID', 'DRUG_NAME', 'LN_IC50']]
+
+    # drug2smi merge로 smiles 추가
+    drug2smi = pd.read_csv(f'{DATA_DIR}/drug2smi.csv')[['DRUG_NAME', 'smiles']]
+    CDR = pd.merge(CDR, drug2smi, on='DRUG_NAME', how='inner')
+
+    # exp.csv에 있는 cell만 keep
+    exp_cells = pd.read_csv(f'{DATA_DIR}/exp.csv', index_col=0).index
+    exp_cells = exp_cells[exp_cells.str.match(r"^DATA\.[0-9]+$")]   # drop replicate rows
+    valid_cells = set(exp_cells.str.replace('DATA.', '', regex=False).astype(int))
+    CDR = CDR[CDR['COSMIC_ID'].isin(valid_cells)]
+
+    # TransCDR 내부 컬럼명에 맞추기
+    CDR = CDR.rename(columns={'DRUG_ID': 'drug_id', 'LN_IC50': 'lnIC50'})
+    CDR['cell_type']  = CDR['COSMIC_ID']
+    CDR['assay_name'] = CDR['COSMIC_ID']
+
+    CDR = shuffle(CDR, random_state=2022)
+    print(f"Total CDR pairs after filter: {CDR.shape[0]}")
     
 if args.model_type == 'classification':
     from random import sample
