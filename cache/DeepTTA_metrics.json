@@ -1,0 +1,11 @@
+{
+  "model": "DeepTTA",
+  "metrics": {
+    "Pearson": 0.9087,
+    "Spearman": 0.8726,
+    "RMSE": 1.1978,
+    "MSE": 1.4346
+  },
+  "source": "deeptta_91_baseline",
+  "notes": "Random split 9:1, 3 epoch, expression-only. Baseline before external index. Verified deterministic across 2 runs."
+}

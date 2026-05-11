@@ -60,7 +60,7 @@ class GetData():
 
         return drug_cell_df
 
-    def ByRandom(self, random_seed=42, test_size=0.2):
+    def ByRandom(self, random_seed=42, test_size=0.1):
         """Mixed split (random 80/20) — benchmark default split"""
         drug_cell_df = pd.read_csv(self.pairfile)
         drug_cell_df = drug_cell_df[['COSMIC_ID', 'DRUG_NAME', 'LN_IC50']]
