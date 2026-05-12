@@ -12,7 +12,7 @@ Pearson_pval = []
 Spearman = []
 Spearman_pval = []
 Concordance_Index = []
-for i in range(1,11):
+for i in range(1,6):
     res = pd.read_csv(args.CV10_result_path+'/fold' + str(i) + '/test_markdowntable.txt')
     MSE.append(float(res.iloc[2,0].split('|')[1]))
     RMSE.append(float(res.iloc[2,0].split('|')[2]))

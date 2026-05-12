@@ -56,11 +56,11 @@ if args.model_type == 'classification':
     CDR = shuffle(CDR,random_state=2022) 
 
 if args.scenarios == 'warm start':
-    kf = KFold(n_splits=10,random_state=2022,shuffle=True)
+    kf = KFold(n_splits=5,random_state=2022,shuffle=True)
     i=0
     for train_index, test_index in kf.split(CDR):
             i=i+1
-            result_folder = args.result_folder +'/CV10/fold'+str(i)                
+            result_folder = args.result_folder +'/CV5/fold'+str(i)                
             train_val, test_set = CDR.iloc[train_index], CDR.iloc[test_index]
             train_set, val_set = train_test_split(train_val, test_size = 1/9, random_state = 0)
             if os.path.exists(result_folder): 
@@ -75,7 +75,7 @@ if args.scenarios == 'warm start':
 
 if args.scenarios == 'cold drug':
     drugs = pd.DataFrame({'drug_id':CDR['drug_id'].unique()}) 
-    kf = KFold(n_splits=10,random_state=2022,shuffle=True)
+    kf = KFold(n_splits=5,random_state=2022,shuffle=True)
     i=0
     for train_index, test_index in kf.split(drugs):
             i=i+1
@@ -97,7 +97,7 @@ if args.scenarios == 'cold drug':
 
 if args.scenarios == 'cold cell':
     cells = pd.DataFrame({'COSMIC_ID':CDR['COSMIC_ID'].unique()}) 
-    kf = KFold(n_splits=10,random_state=2022,shuffle=True)
+    kf = KFold(n_splits=5,random_state=2022,shuffle=True)
     i=0
     for train_index, test_index in kf.split(cells):
             i=i+1
@@ -140,7 +140,7 @@ if args.scenarios == 'cold scaffold':
     ]
     all_scaffolds_list = list(all_scaffolds.keys())
     # CV10 split
-    kf = KFold(n_splits=10,random_state=2022,shuffle=True)
+    kf = KFold(n_splits=5,random_state=2022,shuffle=True)
     i=0
     for train_index, test_index in kf.split(all_scaffolds_list):
         i=i+1
@@ -210,7 +210,7 @@ if args.scenarios == 'cold cold cluster':
 
     # data split based on cell cluster
     CDR = pd.merge(CDR,labels,on='cell_type')
-    kf = KFold(n_splits=10,random_state=2022,shuffle=True)
+    kf = KFold(n_splits=5,random_state=2022,shuffle=True)
     i=0
     label = labels.drop_duplicates(subset=['cell_label'])
     for train_index, test_index in kf.split(label):
@@ -237,7 +237,7 @@ if args.scenarios == 'cold cold cluster':
 if args.scenarios == 'cold cell & drug':
     drugs = pd.DataFrame({'drug_id':CDR['drug_id'].unique()}) 
     cells = pd.DataFrame({'cell_type':CDR['cell_type'].unique()}) 
-    kf = KFold(n_splits=10,random_state=2022,shuffle=True)
+    kf = KFold(n_splits=5,random_state=2022,shuffle=True)
     i=0
     for d_train_index, d_test_index in kf.split(drugs):
         i=i+1
