@@ -16,3 +16,8 @@ __pycache__/
 
 # Jupyter checkpoints
 .ipynb_checkpoints/
+
+# Training artifacts (TensorBoard, model outputs)
+events.out.tfevents.*
+DeepTTA/Model_unif/
+**/result/

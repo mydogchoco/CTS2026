@@ -1,0 +1,11 @@
+{
+  "model": "TransCDR",
+  "metrics": {
+    "Pearson": 0.9377,
+    "Spearman": 0.9086,
+    "RMSE": 0.9707,
+    "MSE": 0.9423
+  },
+  "source": "fold1_only_temporary",
+  "notes": "Fold 1 only (CV10, mid-training). Will be updated after CV5 retraining completes."
+}
