@@ -1,11 +1,33 @@
 {
   "model": "DeepTTA",
   "metrics": {
-    "Pearson": 0.9087,
-    "Spearman": 0.8726,
-    "RMSE": 1.1978,
-    "MSE": 1.4346
+    "Pearson": 0.9073,
+    "Spearman": 0.8682,
+    "RMSE": 1.194,
+    "MSE": 1.4255
   },
-  "source": "deeptta_91_baseline",
-  "notes": "Random split 9:1, 3 epoch, expression-only. Baseline before external index. Verified deterministic across 2 runs."
+  "source": "external_index_mix",
+  "notes": "External split (mix_index.npy), 8:1:1, 3 epoch, expression-only, val=test leak fixed. train/val/test = 137235/17154/17155 of 171544 pairs.",
+  "scenarios": {
+    "mix": {
+      "metrics": {
+        "Pearson": 0.9073,
+        "Spearman": 0.8682,
+        "RMSE": 1.194,
+        "MSE": 1.4255
+      },
+      "source": "external_index_mix",
+      "notes": "Mixed (random) split scenario. seed=0 in Response Index.ipynb. Verified val/test gap negligible (-0.0014 Pearson)."
+    },
+    "legacy_random": {
+      "metrics": {
+        "Pearson": 0.9087,
+        "Spearman": 0.8726,
+        "RMSE": 1.1978,
+        "MSE": 1.4346
+      },
+      "source": "deeptta_91_baseline",
+      "notes": "Pre-external-index baseline. Random split 9:1, 3 epoch, expression-only. val=test leak present. Kept for reference."
+    }
+  }
 }

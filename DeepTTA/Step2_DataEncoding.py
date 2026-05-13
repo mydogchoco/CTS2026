@@ -66,6 +66,28 @@ class DataEncoding:
 
         return traindata, train_rnadata, testdata, test_rnadata
 
+    def encode_three_way(self, traindata, valdata, testdata):
+            """Three-way version of encode for train/val/test split."""
+            drug_smiles = self.Getdata.getDrug()
+            drugname2smile = dict(zip(drug_smiles['DRUG_NAME'], drug_smiles['smiles']))
+            smile_encode = pd.Series(drug_smiles['smiles'].unique()).apply(self._drug2emb_encoder)
+            uniq_smile_dict = dict(zip(drug_smiles['smiles'].unique(), smile_encode))
+
+            for df in (traindata, valdata, testdata):
+                df['smiles'] = [drugname2smile[i] for i in df['DRUG_NAME']]
+                df['drug_encoding'] = [uniq_smile_dict[i] for i in df['smiles']]
+
+            traindata = traindata.reset_index(drop=True); traindata['Label'] = traindata['LN_IC50']
+            valdata   = valdata.reset_index(drop=True);   valdata['Label']   = valdata['LN_IC50']
+            testdata  = testdata.reset_index(drop=True);  testdata['Label']  = testdata['LN_IC50']
+
+            train_rnadata, val_rnadata, test_rnadata = self.Getdata.getRna_three_way(
+                traindata=traindata, valdata=valdata, testdata=testdata)
+            train_rnadata.index = range(train_rnadata.shape[0])
+            val_rnadata.index   = range(val_rnadata.shape[0])
+            test_rnadata.index  = range(test_rnadata.shape[0])
+
+            return traindata, train_rnadata, valdata, val_rnadata, testdata, test_rnadata
 
 if __name__ == '__main__':
     vocab_dir = '/home/intern3_2026_1/DeepTTC'

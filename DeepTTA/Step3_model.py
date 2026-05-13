@@ -306,43 +306,54 @@ class DeepTTC:
 
         self.model.load_state_dict(state_dict)
 
-
 if __name__ == '__main__':
-    import json
-    from Step2_DataEncoding import DataEncoding
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--split_file', type=str, default=None,
+                        help='External index .npy file. If omitted, falls back to '
+                             'ByRandom (legacy mode, val=test leak).')
+    parser.add_argument('--seed', type=int, default=1,
+                        help='Random seed (used only in legacy ByRandom mode).')
+    parser.add_argument('--modeldir', type=str,
+                        default='/home/intern1_2026_1/Common/CTS2026/DeepTTA/Model_unif')
+    parser.add_argument('--output', type=str,
+                        default='/home/intern1_2026_1/Common/Output/DeepTTA/mix_metrics.csv')
+    args = parser.parse_args()
 
-    vocab_dir = '/home/intern3_2026_1/DeepTTC'
+    from Step2_DataEncoding import DataEncoding
+    vocab_dir = '/home/intern3_2026_1/DeepTTC'   # TODO: relocate vocab files into Common
     obj = DataEncoding(vocab_dir=vocab_dir)
 
-    # data prep
-    traindata, testdata = obj.Getdata.ByRandom(random_seed=1)
-    traindata, train_rnadata, testdata, test_rnadata = obj.encode(
-        traindata=traindata,
-        testdata=testdata)
+    # ── data prep ──
+    if args.split_file is None:
+        print('[WARN] No --split_file given; falling back to ByRandom (val=test, legacy).')
+        traindata, testdata = obj.Getdata.ByRandom(random_seed=args.seed)
+        valdata = testdata.copy()
+    else:
+        print(f'[INFO] Using external split: {args.split_file}')
+        traindata, valdata, testdata = obj.Getdata.ByExternalIndex(args.split_file)
 
-    # build & train
-    modeldir = '/home/intern1_2026_1/Common/CTS2026/DeepTTA/Model_unif'
-    if not os.path.exists(modeldir):
-        os.mkdir(modeldir)
+    traindata, train_rnadata, valdata, val_rnadata, testdata, test_rnadata = \
+        obj.encode_three_way(traindata=traindata, valdata=valdata, testdata=testdata)
 
-    net = DeepTTC(modeldir=modeldir)
+    # ── train & evaluate ──
+    os.makedirs(args.modeldir, exist_ok=True)
+    net = DeepTTC(modeldir=args.modeldir)
     net.train(train_drug=traindata, train_rna=train_rnadata,
-              val_drug=testdata,    val_rna=test_rnadata)
+              val_drug=valdata,     val_rna=val_rnadata)
     net.save_model()
-    print("Model saved: {}/model.pt".format(modeldir))
+    print(f"Model saved: {args.modeldir}/model.pt")
 
-# ── 결과 출력 ──
-y_label, y_pred, mse, rmse, pearson, p_val, spearman, s_p_val, CI = \
-    net.predict(testdata, test_rnadata)
+    # held-out test evaluation
+    y_label, y_pred, mse, rmse, pearson, p_val, spearman, s_p_val, CI = \
+        net.predict(testdata, test_rnadata)
 
-OUTPUT_DIR = '/home/intern1_2026_1/Common/Output'
-out_path = OUTPUT_DIR + '/DeepTTA_with_gexp_GDSC.csv'
-
-with open(out_path, 'w') as f:
-    f.write(f"Pearson = {pearson}\n")
-    f.write(f"Spearman = {spearman}\n")
-    f.write(f"RMSE = {rmse}\n")
-    f.write(f"MSE = {mse}\n")
-
-print(f"Results saved to: {out_path}")
-print(f"Pearson={pearson:.4f}, Spearman={spearman:.4f}, RMSE={rmse:.4f}, MSE={mse:.4f}")
+    os.makedirs(os.path.dirname(args.output), exist_ok=True)
+    with open(args.output, 'w') as f:
+        f.write(f"Pearson = {pearson}\n")
+        f.write(f"Spearman = {spearman}\n")
+        f.write(f"RMSE = {rmse}\n")
+        f.write(f"MSE = {mse}\n")
+    print(f"Results saved to: {args.output}")
+    print(f"Pearson={pearson:.4f}, Spearman={spearman:.4f}, "
+          f"RMSE={rmse:.4f}, MSE={mse:.4f}")

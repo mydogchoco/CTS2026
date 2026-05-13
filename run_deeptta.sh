@@ -6,14 +6,18 @@
 #   bash run_deeptta.sh --split_file <path> [--mock]
 #
 # Modes:
-#   --mock : run mock_run.py (no actual training, uses cached metrics)
-#   (no flag): run real training pipeline
-#                -> NOT YET IMPLEMENTED. Waiting for external split index.
-#                   Will be filled in after Tuesday's index delivery.
+#   --mock      : run mock_run.py (no actual training, uses cached metrics)
+#   (no flag)   : run real training pipeline
+#
+# Scenario is auto-inferred from the split_file basename:
+#   mix_index.npy        -> mix
+#   cellblind_index.npy  -> cellblind
+#   drugblind_index.npy  -> drugblind
+#   disjoint_index.npy   -> disjoint
 #
 # Examples:
 #   bash run_deeptta.sh --split_file /tmp/fake.npy --mock
-#   bash run_deeptta.sh --split_file /home/intern1_2026_1/Common/Input/SplitIndex/fold1.npy
+#   bash run_deeptta.sh --split_file /home/intern1_2026_1/Common/Input/SplitIndex/mix_index.npy
 # =============================================================================
 
 set -euo pipefail
@@ -26,8 +30,10 @@ CONDA_SH="${COMMON_ROOT}/miniconda3/etc/profile.d/conda.sh"
 CONDA_ENV="deeptta"
 
 CTS_ROOT="${COMMON_ROOT}/CTS2026"
-MODEL_DIR="${CTS_ROOT}/DeepTTA"
+CODE_DIR="${CTS_ROOT}/DeepTTA"
 MOCK_RUNNER="${CTS_ROOT}/mock_run.py"
+
+OUTPUT_ROOT="${COMMON_ROOT}/Output/DeepTTA"
 
 MODEL_NAME="DeepTTA"
 
@@ -76,6 +82,24 @@ if [[ -z "${SPLIT_FILE}" ]]; then
     usage
 fi
 
+# Mock mode skips file existence check (lets us test with fake paths)
+if [[ "${MOCK}" != true && ! -f "${SPLIT_FILE}" ]]; then
+    echo "[run_deeptta] ERROR: split_file not found: ${SPLIT_FILE}" >&2
+    exit 1
+fi
+
+# -----------------------------------------------------------------------------
+# Scenario inference from split_file basename
+#   mix_index.npy -> mix, cellblind_index.npy -> cellblind, etc.
+# -----------------------------------------------------------------------------
+SPLIT_BASE="$(basename "${SPLIT_FILE}")"
+SCENARIO="${SPLIT_BASE%_index.npy}"
+if [[ "${SCENARIO}" == "${SPLIT_BASE}" ]]; then
+    # filename didn't match *_index.npy pattern; fall back to literal basename
+    SCENARIO="${SPLIT_BASE%.npy}"
+fi
+echo "[run_deeptta] Inferred scenario: ${SCENARIO}"
+
 # -----------------------------------------------------------------------------
 # Conda activation
 # -----------------------------------------------------------------------------
@@ -100,17 +124,21 @@ if [[ "${MOCK}" == true ]]; then
         --model "${MODEL_NAME}" \
         --split_file "${SPLIT_FILE}"
 else
-    echo "[run_deeptta] Mode: REAL TRAINING" >&2
-    echo "[run_deeptta] ERROR: Real training mode is not yet implemented." >&2
-    echo "[run_deeptta]" >&2
-    echo "[run_deeptta] TODO (after external index delivery on Tuesday):" >&2
-    echo "[run_deeptta]   1. Add ByExternalIndex() to Step1_getData.py" >&2
-    echo "[run_deeptta]   2. Add --split_file argparse to Step3_model.py" >&2
-    echo "[run_deeptta]   3. Fix val=test leak (val_drug=valdata in net.train)" >&2
-    echo "[run_deeptta]   4. Replace the block below with:" >&2
-    echo "[run_deeptta]        cd \"\${MODEL_DIR}\"" >&2
-    echo "[run_deeptta]        python -u Step3_model.py --split_file \"\${SPLIT_FILE}\"" >&2
-    echo "[run_deeptta]" >&2
-    echo "[run_deeptta] Hint: use --mock to test the runner interface in the meantime." >&2
-    exit 2
+    echo "[run_deeptta] Mode: REAL TRAINING"
+    echo "[run_deeptta] Model: ${MODEL_NAME}"
+    echo "[run_deeptta] Split file: ${SPLIT_FILE}"
+    echo "[run_deeptta] Scenario: ${SCENARIO}"
+
+    MODELDIR="${CODE_DIR}/Model_unif/${SCENARIO}"
+    OUTPUT="${OUTPUT_ROOT}/${SCENARIO}_metrics.csv"
+
+    mkdir -p "${MODELDIR}" "$(dirname "${OUTPUT}")"
+
+    cd "${CODE_DIR}"
+    python -u Step3_model.py \
+        --split_file "${SPLIT_FILE}" \
+        --modeldir   "${MODELDIR}" \
+        --output     "${OUTPUT}"
+
+    echo "[run_deeptta] Done. Metrics: ${OUTPUT}"
 fi

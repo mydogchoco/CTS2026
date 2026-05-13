@@ -86,6 +86,39 @@ class GetData():
         print(f"RNA shape — train: {train_rna.shape}, test: {test_rna.shape}")
         return train_rna, test_rna
 
+    def ByExternalIndex(self, split_file):
+        """External index split (train/val/test from team-provided npy file).
+
+        Coord system: original response.csv RangeIndex
+        (verified by verify_filter_consistency.py — pre-filtered data,
+        no rows lost during _filter_pair).
+        """
+        drug_cell_df = pd.read_csv(self.pairfile)
+        drug_cell_df = drug_cell_df[['COSMIC_ID', 'DRUG_NAME', 'LN_IC50']]
+        drug_cell_df = self._filter_pair(drug_cell_df)   # defensive (no-op on current data)
+
+        split = np.load(split_file, allow_pickle=True).item()
+        train_df = drug_cell_df.loc[split['train']].reset_index(drop=True)
+        val_df   = drug_cell_df.loc[split['val']  ].reset_index(drop=True)
+        test_df  = drug_cell_df.loc[split['test'] ].reset_index(drop=True)
+        print(f"External split — train: {len(train_df)}, "
+            f"val: {len(val_df)}, test: {len(test_df)}")
+        return train_df, val_df, test_df
+
+    def getRna_three_way(self, traindata, valdata, testdata):
+        """Three-way version of getRna for train/val/test split."""
+        exp = pd.read_csv(self.rnafile, index_col=0)
+        exp = exp[exp.index.str.match(r"^DATA\.[0-9]+$")]
+        exp.index = exp.index.str.replace("DATA.", "", regex=False).astype(int)
+
+        train_rna = exp.loc[list(traindata['COSMIC_ID'])].reset_index(drop=True)
+        val_rna   = exp.loc[list(valdata['COSMIC_ID'])  ].reset_index(drop=True)
+        test_rna  = exp.loc[list(testdata['COSMIC_ID']) ].reset_index(drop=True)
+        print(f"RNA shape — train: {train_rna.shape}, "
+            f"val: {val_rna.shape}, test: {test_rna.shape}")
+        return train_rna, val_rna, test_rna
+
+
 
 if __name__ == '__main__':
     obj = GetData()
