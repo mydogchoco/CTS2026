@@ -303,8 +303,11 @@ def build_inference_df(smiles, cosmic_ids, labels=None):
             (validate mode). If None, dummy zeros are used.
     """
     n = len(cosmic_ids)
+    # predict mode: labels are dummy and unused. test() computes concordance_index
+    # which raises ZeroDivisionError ("no admissable pairs") when all labels are
+    # identical. Use distinct dummy values so the (unused) metric path stays alive.
     if labels is None:
-        labels = np.zeros(n, dtype=float)
+        labels = np.arange(n, dtype=float)
     df = pd.DataFrame({
         'COSMIC_ID': [int(c) for c in cosmic_ids],
         'smiles': [smiles] * n,
