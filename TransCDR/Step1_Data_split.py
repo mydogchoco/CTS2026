@@ -10,35 +10,57 @@ import argparse
 
 parser = argparse.ArgumentParser(description='data segmentation strategies')
 parser.add_argument('--model_type', type=str, required=True, help='classification or regression')
-parser.add_argument('--scenarios', type=str, required=True, help='warm start, cold drug, cold scaffold, cold cell, cold cell cluster ,cold cell & scaffold')
-parser.add_argument('--n_clusters', type=int, required=True, help='the number of cell cluster: 10, 50, 100, 200')
-parser.add_argument('--n_sampling', type=int, required=True, help='the number of sampling ratio (neg/pos): 1, 2, 5')
-parser.add_argument('--result_folder', type=str, required=True, help='The save path of CV10 data')
+parser.add_argument('--scenarios', type=str, required=True,
+                    help='warm start, cold drug, cold scaffold, cold cell, cold cell cluster, cold cell & scaffold, external')
+parser.add_argument('--n_clusters', type=int, default=0, help='number of cell cluster (only for cold cell cluster)')
+parser.add_argument('--n_sampling', type=int, default=0, help='neg/pos ratio (only for classification)')
+parser.add_argument('--result_folder', type=str, required=True, help='The save path')
+# <exp_id>_index.npy compat: replace --split_file with --split + --exp_id.
+# Split file path is resolved internally to keep callers stateless.
+parser.add_argument('--split', type=str, default='',
+                    choices=['', 'mix', 'cellblind', 'drugblind', 'disjoint'],
+                    help='Scenario name (required when --scenarios=external)')
+parser.add_argument('--exp_id', type=str, default='',
+                    help='Experiment id (required when --scenarios=external)')
 args = parser.parse_args()
+
+if args.scenarios == 'external' and (not args.split or not args.exp_id):
+    raise ValueError("--split and --exp_id are required when --scenarios=external")
 
 DATA_DIR = "/home/intern1_2026_1/Common/Input"
 
 if args.model_type == 'regression':
-    # 통일 response 로드
     CDR = pd.read_csv(f'{DATA_DIR}/response.csv')
     CDR = CDR[['COSMIC_ID', 'DRUG_ID', 'DRUG_NAME', 'LN_IC50']]
 
-    # drug2smi merge로 smiles 추가
+    # external: 원본 response.csv RangeIndex를 좌표계로 유지
+    # → merge 전에 인덱스 보존, merge 후 복원, shuffle 건너뛰기
+    if args.scenarios == 'external':
+        CDR['_orig_idx'] = CDR.index
+        n_before = len(CDR)
+
     drug2smi = pd.read_csv(f'{DATA_DIR}/drug2smi.csv')[['DRUG_NAME', 'smiles']]
     CDR = pd.merge(CDR, drug2smi, on='DRUG_NAME', how='inner')
 
-    # exp.csv에 있는 cell만 keep
     exp_cells = pd.read_csv(f'{DATA_DIR}/exp.csv', index_col=0).index
-    exp_cells = exp_cells[exp_cells.str.match(r"^DATA\.[0-9]+$")]   # drop replicate rows
+    exp_cells = exp_cells[exp_cells.str.match(r"^DATA\.[0-9]+$")]
     valid_cells = set(exp_cells.str.replace('DATA.', '', regex=False).astype(int))
     CDR = CDR[CDR['COSMIC_ID'].isin(valid_cells)]
 
-    # TransCDR 내부 컬럼명에 맞추기
     CDR = CDR.rename(columns={'DRUG_ID': 'drug_id', 'LN_IC50': 'lnIC50'})
     CDR['cell_type']  = CDR['COSMIC_ID']
     CDR['assay_name'] = CDR['COSMIC_ID']
 
-    CDR = shuffle(CDR, random_state=2022)
+    if args.scenarios == 'external':
+        # 외부 인덱스는 필터/머지로 row가 빠지지 않는다고 가정 — 검증
+        assert len(CDR) == n_before, \
+            f"External index assumes no row loss, got {n_before} -> {len(CDR)}. " \
+            f"인덱스 좌표계가 안 맞을 수 있음. verify_filter_consistency.py 다시 돌려볼 것."
+        CDR = CDR.set_index('_orig_idx')
+        # shuffle 안 함 — _orig_idx (원본 RangeIndex) 가 외부 인덱스 좌표계
+    else:
+        CDR = shuffle(CDR, random_state=2022)
+
     print(f"Total CDR pairs after filter: {CDR.shape[0]}")
     
 if args.model_type == 'classification':
@@ -54,6 +76,74 @@ if args.model_type == 'classification':
     CDR_0 = CDR_0.sample(n=args.n_sampling*len(CDR_1))
     CDR = pd.concat([CDR_0,CDR_1])
     CDR = shuffle(CDR,random_state=2022) 
+
+if args.scenarios == 'external':
+    import numpy as np
+    # <exp_id>_index.npy compat: load top-level dict {loc_iloc, mix, ...}
+    # and select the scenario sub-dict requested via --split.
+    npy_path = f'/home/intern1_2026_1/Common/Input/SplitIndex/{args.exp_id}_index.npy'
+    _full = np.load(npy_path, allow_pickle=True).item()
+    loc_iloc = _full['loc_iloc']
+    scenario_dict = _full[args.split]
+
+    folds = scenario_dict['folds']
+    folds_train = scenario_dict.get('folds_train', None)   # disjoint only
+    test_idx_orig = scenario_dict['test']
+
+    assert len(folds) == 5, f"Expected 5 folds, got {len(folds)}"
+
+    # Consistency check: every requested original idx must be in loc_iloc.
+    # Catches indexing.py filter mismatch (e.g. methyl in play but our pipeline
+    # doesn't filter on it) before we attempt a KeyError-prone iloc lookup.
+    all_idx = list(test_idx_orig) + [int(i) for f in folds for i in f]
+    if folds_train is not None:
+        all_idx += [int(i) for f in folds_train for i in f]
+    missing = set(all_idx) - set(loc_iloc.keys())
+    assert not missing, (
+        f"[external] {len(missing)} split indices missing from loc_iloc "
+        f"— indexing.py filter mismatch (first few: {list(missing)[:5]})"
+    )
+
+    # CDR currently has _orig_idx as its label index (set above at line ~59).
+    # Reset to a RangeIndex and build a pos_of_orig map so we can use .iloc
+    # for positional selection (the loc_iloc-style contract).
+    CDR = CDR.reset_index()
+    pos_of_orig = {int(orig): pos for pos, orig in enumerate(CDR['_orig_idx'].values)}
+
+    def _to_iloc(idx_arr):
+        return np.array([pos_of_orig[int(i)] for i in idx_arr])
+
+    test_iloc = _to_iloc(test_idx_orig)
+    test_set = CDR.iloc[test_iloc]
+
+    for fold_i in range(5):
+        # fold_i (0-base array index) → fold{fold_i+1} 폴더 (1-base, 기존 TransCDR 관례)
+        val_idx_orig = folds[fold_i]
+        if folds_train is not None:
+            # disjoint: dedicated train pool per fold (cell∩drug constraint
+            # means train cannot be reconstructed from union of other folds).
+            train_idx_orig = folds_train[fold_i]
+        else:
+            # mix / drugblind / cellblind: train is union of other folds.
+            train_idx_orig = np.concatenate(
+                [folds[j] for j in range(5) if j != fold_i]
+            )
+
+        train_iloc = _to_iloc(train_idx_orig)
+        val_iloc   = _to_iloc(val_idx_orig)
+
+        train_set = CDR.iloc[train_iloc]
+        val_set   = CDR.iloc[val_iloc]
+
+        result_folder = args.result_folder + '/external/fold' + str(fold_i + 1)
+        os.makedirs(result_folder, exist_ok=True)
+        train_set.to_csv(result_folder + '/train.txt', sep='\t', index=False)
+        val_set.to_csv(result_folder + '/val.txt', sep='\t', index=False)
+        test_set.to_csv(result_folder + '/test.txt', sep='\t', index=False)
+
+        print(f"[external] fold{fold_i + 1}: train={len(train_set)}, "
+              f"val={len(val_set)}, test={len(test_set)}")
+
 
 if args.scenarios == 'warm start':
     kf = KFold(n_splits=5,random_state=2022,shuffle=True)

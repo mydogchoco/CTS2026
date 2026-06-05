@@ -34,7 +34,7 @@ args = parser.parse_args()
 
 
 
-for i in range(1,11):
+for i in range(1, 6): 
     train = pd.read_csv(args.data_path + '/fold'+str(i)+'/train.txt',sep='\t')
     test = pd.read_csv(args.data_path + '/fold'+str(i)+'/test.txt',sep='\t')
     val = pd.read_csv(args.data_path + '/fold'+str(i)+'/val.txt',sep='\t')

@@ -3,17 +3,24 @@
 # run_transcdr.sh - Unified entry point for TransCDR model
 #
 # Usage:
-#   bash run_transcdr.sh --split_file <path> [--mock]
+#   bash run_transcdr.sh --split <scenario> --exp_id <id> [--gpu_id N] [--mock]
 #
-# Modes:
-#   --mock : run mock_run.py (no actual training, uses cached metrics)
-#   (no flag): run real training pipeline
-#                -> NOT YET IMPLEMENTED. Waiting for external split index.
-#                   Will be filled in after Tuesday's index delivery.
+# Required:
+#   --split <scenario>   mix | cellblind | drugblind | disjoint
+#   --exp_id <id>        experiment identifier; resolves split file at
+#                        ${COMMON_ROOT}/Input/SplitIndex/<exp_id>_index.npy
+#
+# Optional:
+#   --gpu_id N           GPU device id (default: 0)
+#   --mock               Run mock pipeline (no training, cached metrics)
+#
+# Output:
+#   ${COMMON_ROOT}/Output/<exp_id>/TransCDR/<scenario>/metrics.csv
 #
 # Examples:
-#   bash run_transcdr.sh --split_file /tmp/fake.npy --mock
-#   bash run_transcdr.sh --split_file /home/intern1_2026_1/Common/Input/SplitIndex/fold1.npy
+#   bash run_transcdr.sh --split mix --exp_id original
+#   bash run_transcdr.sh --split mix --exp_id original --gpu_id 1
+#   bash run_transcdr.sh --split mix --exp_id original --mock
 # =============================================================================
 
 set -euo pipefail
@@ -35,27 +42,39 @@ MODEL_NAME="TransCDR"
 # -----------------------------------------------------------------------------
 # Argument parsing
 # -----------------------------------------------------------------------------
-SPLIT_FILE=""
+SPLIT=""
+EXP_ID=""
 MOCK=false
+GPU_ID=0
 
 usage() {
     cat <<EOF >&2
-Usage: bash run_transcdr.sh --split_file <path> [--mock]
+Usage: bash run_transcdr.sh --split <scenario> --exp_id <id> [--gpu_id N] [--mock]
 
 Required:
-  --split_file <path>   Path to .npy file with train/val/test indices
+  --split <scenario>   mix | cellblind | drugblind | disjoint
+  --exp_id <id>        experiment identifier (resolves split file path)
 
 Optional:
-  --mock                Run mock pipeline (no training, cached metrics)
-  -h, --help            Show this help message
+  --gpu_id N           GPU device id (default: 0)
+  --mock               Run mock pipeline (no training, cached metrics)
+  -h, --help           Show this help message
 EOF
     exit 1
 }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --split_file)
-            SPLIT_FILE="$2"
+        --split)
+            SPLIT="$2"
+            shift 2
+            ;;
+        --exp_id)
+            EXP_ID="$2"
+            shift 2
+            ;;
+        --gpu_id)
+            GPU_ID="$2"
             shift 2
             ;;
         --mock)
@@ -72,10 +91,23 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "${SPLIT_FILE}" ]]; then
-    echo "[run_transcdr] ERROR: --split_file is required" >&2
+# Both --split and --exp_id are required (registry contract)
+if [[ -z "${SPLIT}" || -z "${EXP_ID}" ]]; then
+    echo "[run_transcdr] ERROR: both --split and --exp_id are required" >&2
     usage
 fi
+
+# <exp_id>_index.npy compat: resolve npy path from exp_id
+SPLIT_FILE="${COMMON_ROOT}/Input/SplitIndex/${EXP_ID}_index.npy"
+
+# Mock mode skips file existence check (lets registry smoke-test with fake exp_id)
+if [[ "${MOCK}" != true && ! -f "${SPLIT_FILE}" ]]; then
+    echo "[run_transcdr] ERROR: split_file not found: ${SPLIT_FILE}" >&2
+    exit 1
+fi
+
+echo "[run_transcdr] exp_id=${EXP_ID} split=${SPLIT}"
+echo "[run_transcdr] Split file: ${SPLIT_FILE}"
 
 # -----------------------------------------------------------------------------
 # Conda activation
@@ -90,30 +122,49 @@ source "${CONDA_SH}"
 conda activate "${CONDA_ENV}"
 
 # -----------------------------------------------------------------------------
+# GPU selection
+# -----------------------------------------------------------------------------
+export CUDA_VISIBLE_DEVICES="${GPU_ID}"
+echo "[run_transcdr] GPU: CUDA_VISIBLE_DEVICES=${GPU_ID}"
+
+# -----------------------------------------------------------------------------
 # Dispatch
 # -----------------------------------------------------------------------------
+# Output convention (registry): Output/<exp_id>/<MODEL>/<scenario>/metrics.csv
+OUTPUT_ABS="${COMMON_ROOT}/Output/${EXP_ID}/${MODEL_NAME}/${SPLIT}/metrics.csv"
+
 if [[ "${MOCK}" == true ]]; then
     echo "[run_transcdr] Mode: MOCK"
-    echo "[run_transcdr] Model: ${MODEL_NAME}"
-    echo "[run_transcdr] Split file: ${SPLIT_FILE}"
 
     python -u "${MOCK_RUNNER}" \
         --model "${MODEL_NAME}" \
-        --split_file "${SPLIT_FILE}"
+        --split "${SPLIT}" \
+        --exp_id "${EXP_ID}"
 else
-    echo "[run_transcdr] Mode: REAL TRAINING" >&2
-    echo "[run_transcdr] ERROR: Real training mode is not yet implemented." >&2
-    echo "[run_transcdr]" >&2
-    echo "[run_transcdr] TODO (after external index delivery on Tuesday):" >&2
-    echo "[run_transcdr]   1. Add 'external' scenario branch to Step1_Data_split.py" >&2
-    echo "[run_transcdr]   2. Add --split_file flag to Step1_data_split.sh" >&2
-    echo "[run_transcdr]   3. Replace the block below with the Step1->Step2->Step3 chain:" >&2
-    echo "[run_transcdr]        cd \"\${SCRIPT_DIR}\"" >&2
-    echo "[run_transcdr]        bash Step1_data_split.sh --split_file \"\${SPLIT_FILE}\" --scenarios external" >&2
-    echo "[run_transcdr]        bash Step2_TransCDR_CV10.sh" >&2
-    echo "[run_transcdr]        bash Step3_CV10_result.sh" >&2
-    echo "[run_transcdr]" >&2
-    echo "[run_transcdr] Note: script filenames keep 'CV10' suffix intentionally (handoff doc 3.1)." >&2
-    echo "[run_transcdr] Hint: use --mock to test the runner interface in the meantime." >&2
-    exit 2
+    echo "[run_transcdr] Mode: REAL TRAINING"
+
+    # Per-exp_id workspace under TransCDR/ so concurrent exps don't clobber.
+    DATA_PATH_REL="./data/GDSC/${EXP_ID}/${SPLIT}/external"
+    MODELDIR_REL="./result/${EXP_ID}/external/${SPLIT}"
+
+    cd "${MODEL_DIR}"
+
+    echo "[run_transcdr] === Step1: data split ==="
+    bash "${SCRIPT_DIR}/Step1_data_split.sh" \
+        --scenarios external \
+        --split "${SPLIT}" \
+        --exp_id "${EXP_ID}" \
+        --result_folder "./data/GDSC/${EXP_ID}/${SPLIT}"
+
+    echo "[run_transcdr] === Step2: train 5 folds ==="
+    bash "${SCRIPT_DIR}/Step2_TransCDR_CV10.sh" \
+        --data_path "${DATA_PATH_REL}" \
+        --modeldir "${MODELDIR_REL}"
+
+    echo "[run_transcdr] === Step3: aggregate CV results ==="
+    bash "${SCRIPT_DIR}/Step3_CV10_result.sh" \
+        --CV5_result_path "${MODELDIR_REL}" \
+        --output "${OUTPUT_ABS}"
+
+    echo "[run_transcdr] Done. Metrics: ${OUTPUT_ABS}"
 fi
